@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ultravox Voice Call</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+</head>
+
+<body class="bg-gray-100 min-h-screen py-8">
+    <div class="max-w-4xl mx-auto px-4">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <!-- Header -->
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold text-gray-900 mb-2">Ultravox Voice Call</h1>
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-gray-900 mb-2">Call Status</h3>
+                    <div id="callStatus" class="text-sm text-gray-600">Ready</div>
+                </div>
+            </div>
+
+            <!-- Start/End Call Buttons -->
+            <div class="flex space-x-3 mb-6">
+                <button type="button" id="startCall"
+                    class="inline-flex items-center px-4 py-2 text-sm rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors">
+                    <i class="fas fa-phone mr-2"></i> Start Call
+                </button>
+                <button type="button" id="endCall"
+                    class="inline-flex items-center px-4 py-2 text-sm rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors">
+                    <i class="fas fa-phone-slash mr-2"></i> End Call
+                </button>
+            </div>
+
+            <!-- Transcript Section -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-comments mr-2"></i> Conversation Transcript
+                </h3>
+                <div id="callTranscript" class="space-y-2 max-h-80 overflow-y-auto bg-white rounded-lg p-4 border mb-4"
+                    style="scroll-behavior: smooth;">
+                    <div class="text-gray-500 text-center py-4">
+                        <i class="fas fa-microphone-slash text-2xl mb-2"></i>
+                        <p>No conversation yet. Start a call to see the transcript here.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script -->
+    <script type="module">
+        import { UltravoxSession } from 'https://esm.sh/ultravox-client@0.3.6';
+
+        const SYSTEM_PROMPT = `You are a helpful, clear, and concise assistant also fast and minimal. When the user wants to create a LinkedIn post:
+
+1. Ask for the **topic** and a brief **visual idea** (prompt).
+2. Based on the user’s input, **rewrite or enhance** the visual prompt to make it more engaging, descriptive, and visually inspiring.
+3. Then, call the \`postToLinkedIn\` tool with:
+   - the original topic
+   - the **enhanced** prompt you generated.
+
+If the user says "PlayDtmfSounds", immediately call the \`playDtmfSounds\` tool.
+`;
+
+        const API_KEY = 'ACYIQQvm.lNklmELCXiN6xDUMEb7AZxHp3yyjuyWn';
+        const selectedTools = [
+            {
+                "toolName": "playDtmfSounds"
+            },
+            {
+                "temporaryTool": {
+                    "modelToolName": "postToLinkedIn",
+                    "description": "Triggers a workflow to generate and post a LinkedIn image post based on topic and visual prompt",
+                    "http": {
+                        "baseUrlPattern": "https://agentic.prach.org/webhook-test/linkedin-post",
+                        "httpMethod": "POST"
+                    },
+                    "dynamicParameters": [
+                        {
+                            "name": "topic",
+                            "location": "PARAMETER_LOCATION_BODY",
+                            "schema": {
+                                "type": "string",
+                                "description": "Topic of the LinkedIn post"
+                            },
+                            "required": true
+                        },
+                        {
+                            "name": "prompt",
+                            "location": "PARAMETER_LOCATION_BODY",
+                            "schema": {
+                                "type": "string",
+                                "description": "Visual description to generate the image"
+                            },
+                            "required": true
+                        }
+                    ],
+                    "timeout": "10s",
+                    "precomputable": false
+                }
+            }
+
+        ];
+
+        let uvSession = new UltravoxSession();
+        let transcriptData = [];
+
+        const statusEl = document.getElementById('callStatus');
+        const transcriptEl = document.getElementById('callTranscript');
+
+        function updateStatus(message, type = 'info') {
+            const colorMap = {
+                info: 'text-blue-600',
+                success: 'text-green-600',
+                warning: 'text-yellow-600',
+                error: 'text-red-600'
+            };
+            statusEl.innerHTML = `<span class="${colorMap[type]}">${message}</span>`;
+        }
+
+        function renderTranscript(transcripts) {
+            if (!transcripts.length) {
+                transcriptEl.innerHTML = `
+          <div class="text-gray-500 text-center py-4">
+            <i class="fas fa-microphone-slash text-2xl mb-2"></i>
+            <p>No conversation yet. Start a call to see the transcript here.</p>
+          </div>
+        `;
+                return;
+            }
+
+            transcriptEl.innerHTML = transcripts.map((t) => {
+                const isUser = t.speaker === 'user' || t.speaker === 'USER';
+                const align = isUser ? 'justify-end' : 'justify-start';
+                const bgColor = isUser ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800';
+                const name = isUser ? 'You' : 'Assistant';
+                const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                return `
+          <div class="flex ${align}">
+            <div class="rounded-lg p-3 max-w-[80%] ${bgColor}">
+              <p class="text-sm">${t.text}</p>
+              <p class="text-xs opacity-70 mt-1">${name} • ${time}</p>
+            </div>
+          </div>
+        `;
+            }).join('');
+
+            transcriptEl.scrollTop = transcriptEl.scrollHeight;
+        }
+
+        async function createCall() {
+            updateStatus('Creating call...', 'info');
+            const res = await fetch('https://api.ultravox.ai/api/calls', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Unsafe-API-Key': API_KEY
+                },
+                body: JSON.stringify({
+                    temperature: 0.3,
+                    systemPrompt: SYSTEM_PROMPT,
+                    selectedTools: selectedTools
+                })
+            });
+
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            const data = await res.json();
+            return data.joinUrl;
+        }
+
+        const startBtn = document.getElementById('startCall');
+        const endBtn = document.getElementById('endCall');
+
+        function updateButtons({ inCall }) {
+            startBtn.disabled = inCall;
+            endBtn.disabled = !inCall;
+
+            startBtn.classList.toggle('opacity-50', inCall);
+            endBtn.classList.toggle('opacity-50', !inCall);
+        }
+
+        // Set initial button states
+        updateButtons({ inCall: false });
+
+        document.getElementById('startCall').onclick = async () => {
+            try {
+                const joinUrl = await createCall();
+                updateStatus('Joining call...', 'info');
+
+                uvSession.addEventListener('status', () => {
+                    const state = uvSession.status;
+                    const color = state === 'connected' ? 'success' : state === 'disconnected' ? 'warning' : 'info';
+                    updateStatus(`Call status: ${state}`, color);
+
+                    // Optional: fallback safety
+                    if (state === 'disconnected') updateButtons({ inCall: false });
+                });
+
+                uvSession.addEventListener('transcripts', () => {
+                    const transcripts = uvSession.transcripts || [];
+                    transcriptData = transcripts.filter(t => t.isFinal);
+                    renderTranscript(transcriptData);
+                });
+
+                uvSession.addEventListener('error', (e) => {
+                    console.error('Session error:', e);
+                    updateStatus(`Error: ${e.message}`, 'error');
+                });
+
+                await uvSession.joinCall(joinUrl);
+
+                // ✅ Explicitly enable "End Call" button after joining
+                updateButtons({ inCall: true });
+
+            } catch (err) {
+                updateStatus(`Start failed: ${err.message}`, 'error');
+                updateButtons({ inCall: false });
+            }
+        };
+
+        document.getElementById('endCall').onclick = () => {
+            uvSession.leaveCall();
+            transcriptData = [];
+            renderTranscript([]);
+            updateStatus('Call ended.', 'warning');
+            updateButtons({ inCall: false });
+        };
+
+    </script>
+</body>
+
+</html>
